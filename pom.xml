@@ -14,11 +14,24 @@
             <artifactId>flink-scala_2.12</artifactId>
             <version>1.10.1</version>
         </dependency>
+        <!-- https://mvnrepository.com/artifact/org.json4s/json4s-jackson -->
+        <dependency>
+            <groupId>org.json4s</groupId>
+            <artifactId>json4s-jackson_2.12</artifactId>
+            <version>3.7.0-M7</version>
+        </dependency>
 
         <dependency>
             <groupId>org.scalaj</groupId>
             <artifactId>scalaj-http_2.12</artifactId>
             <version>2.4.2</version>
+        </dependency>
+
+
+        <dependency>
+            <groupId>io.minio</groupId>
+            <artifactId>minio</artifactId>
+            <version>8.0.3</version>
         </dependency>
         <dependency>
             <groupId>org.apache.flink</groupId>

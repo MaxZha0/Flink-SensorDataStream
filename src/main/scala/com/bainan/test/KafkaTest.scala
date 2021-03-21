@@ -19,7 +19,7 @@ object KafkaTest {
 
     val kafkaBrokers = "n001:9092,n002:9092,n003:9092"
     val consumerGroup = "flinkKafkaTest"
-    val listenerTopic = "testtopic"
+    val listenerTopic = "picCvProcessTopic"
     val targetTopic = "testTargetTopic"
 
     val properties = new Properties()
