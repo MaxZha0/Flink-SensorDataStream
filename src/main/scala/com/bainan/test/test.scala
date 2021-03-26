@@ -1,7 +1,5 @@
 package com.bainan.test
 
-
-import com.bainan.test.KfkVolt.{Message, ResultJson}
 import com.bainan.test.PicCv.CustomMapTest
 
 import java.util.{Properties, UUID}
@@ -51,6 +49,7 @@ object test {
     val alertStream = messageStream.map(data =>{
       ResultJson("警报！电压值超出阈值",data.value, data.time)
     })
+
 
     //变成JsonString流
     val jsonStrStream = alertStream.map(data =>{

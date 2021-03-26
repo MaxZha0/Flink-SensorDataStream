@@ -1,21 +1,13 @@
 package com.bainan.test
 
-import com.bainan.test.PicCv.CustomMapTest
-import java.util.{Properties, UUID}
-import org.apache.flink.api.common.functions.RichMapFunction
 import org.apache.flink.api.common.serialization.SimpleStringSchema
-import org.apache.flink.configuration.Configuration
-import org.apache.flink.streaming.api.datastream.DataStream
 import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment, _}
 import org.apache.flink.streaming.api.windowing.time.Time
-import org.apache.flink.streaming.api.scala
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer011, FlinkKafkaProducer011}
 import org.json4s.NoTypeHints
-import org.json4s.jackson.JsonMethods.parse
 import org.json4s.jackson.Serialization
-import scalaj.http.Http
 
-
+import java.util.Properties
 
 
 object KfkVolt {
@@ -42,7 +34,7 @@ object KfkVolt {
     val dataStream = env.addSource(consumer)
 
     //分割stream 转换成 Message 格式Stream
-    val messageStream: scala.DataStream[Message] = dataStream.map(data =>{
+    val messageStream = dataStream.map(data =>{
       val dataArray = data.split("\\+")
       Message(dataArray(0), dataArray(1), dataArray(2).toDouble)
     })
@@ -56,10 +48,13 @@ object KfkVolt {
     })
 
 //    val othersStream = splitStream.select("othersStream")
-    //分离出来的流换成准备输出的格式
-    val alertStream = splitStream.select("alertStream").map(data =>{
-      ResultJson("警告！电压值超过阈值！",data.value, data.time)
-    })
+    //分离出来的流 开窗
+    val alertStream = splitStream.select("alertStream")
+      .keyBy(0)
+      .timeWindow(Time.seconds(30))  //定义一个30秒的翻滚窗口
+      .reduce((_, y) => Message(y.time, y.name, y.value)) //不做修改直接聚合
+      .map(data => ResultJson("警告！电压值超过阈值！",data.value, data.time)) //修改格式
+
     //变成JsonString流
     val jsonStrStream = alertStream.map(data =>{
       Serialization.write(data)
