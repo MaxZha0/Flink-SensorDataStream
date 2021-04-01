@@ -29,7 +29,7 @@ object ReadStreamProcessor {
     //接受topic
     val targetTopic = "plcStatusTopic"
     //检测阈值
-    val thresholdValue = 5.00
+    val thresholdValue = 5.30
     //窗口时间
     val windowTime = 30
     val properties = new Properties()
@@ -84,9 +84,16 @@ object ReadStreamProcessor {
       .reduce((_, y) => Message(y.time, y.machineNumber, y.machineType, y.name, y.value)) //直接聚合
 
 
+    val stringName = name match {
+      case "volt" => "动力机械臂电压"
+      case "curr" => "动力机械臂电流"
+      case "temp" => "轴承电动机温度"
+      case "ampl" => "AGV运载车振动幅度"
+      case "freq" => "AGV运载车振动频率"
+    }
     //变成JsonString流
     val jsonStrStream = alertStream
-      .map(data => ResultJson(data.machineNumber, data.machineType, data.name,"警告！"+data.name+"值跳变过大，超过阈值！", data.time)) //修改格式
+      .map(data => ResultJson(data.machineNumber, data.machineType, data.name,"警告！"+stringName+"值跳变过大，超过阈值！", data.time)) //修改格式
       .map(data => Serialization.write(data)) //包装json
 
     jsonStrStream.addSink(sink)
