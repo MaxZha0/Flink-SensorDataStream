@@ -10,7 +10,7 @@ import org.json4s.jackson.Serialization
 import java.util.Properties
 
 /**
- * ./bin/flink run -m yarn-cluster  -yjm 1024 -ytm 1024 -c com.bainan.test.KfkVolt /home/bigdata/flinkApp/flinkAlert/flink-alert-1.0-SNAPSHOT-jar-with-dependencies.jar
+ * ./bin/flink run -m yarn-cluster  -yjm 1024 -ytm 1024 -c com.bainan.test.ReadStreamProcessor /home/bigdata/flinkApp/flinkAlert/flink-alert-1.0-SNAPSHOT-jar-with-dependencies.jar
  * @author Max
  */
 object ReadStreamProcessor {
@@ -29,7 +29,7 @@ object ReadStreamProcessor {
     //接受topic
     val targetTopic = "plcStatusTopic"
     //检测阈值
-    val thresholdValue = 5.30
+    val thresholdValue = 5.96
     //窗口时间
     val windowTime = 30
     val properties = new Properties()
@@ -44,11 +44,18 @@ object ReadStreamProcessor {
     val amplDataStream = env.addSource(new FlinkKafkaConsumer011[String](amplListenerTopic, new SimpleStringSchema(), properties))
     val freqDataStream = env.addSource(new FlinkKafkaConsumer011[String](frepListenerTopic, new SimpleStringSchema(), properties))
 
-    dataStreamProcessor("volt", voltDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("curr", currDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("temp", tempDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("ampl", amplDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("freq", freqDataStream, thresholdValue, sink, windowTime)
+
+    dataStreamProcessor("volt", "动力机械臂", voltDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("curr", "动力机械臂", currDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("volt", "轴承电动机", voltDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("curr", "轴承电动机", currDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("temp", "轴承电动机", tempDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("ampl", "轴承电动机", amplDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("freq", "轴承电动机", freqDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("volt", "AGV运载车", voltDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("curr", "AGV运载车", currDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("ampl", "AGV运载车", amplDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("freq", "AGV运载车", freqDataStream, thresholdValue, sink, windowTime)
 
     env.execute(processName)
   }
@@ -63,38 +70,47 @@ object ReadStreamProcessor {
    * @author Max
    */
   def dataStreamProcessor(name : String,
-                          //                          consumer : FlinkKafkaConsumer011[String],
-                          //                          env :  StreamExecutionEnvironment,
-                         dataStream: DataStream[String],
+//                          machineNumber : String,
+                          machineType : String,
+                          dataStream: DataStream[String],
                           thresholdValue : Double,
                           sink : FlinkKafkaProducer011[String],
                           windowTime : Int) : Unit= {
 
     //分割stream 转换成 Message 格式Stream
     val messageStream = dataStream.map(data =>{
-      val dataArray = data.split("\\+")
+      val dataArray = data.split("\t")
       Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)
     })
 
+    //分流，进行判断后分流
+    val splitStream = messageStream.split( data =>{
+      if(data.machineType == machineType  )
+        Seq("targetStream")
+      else
+        Seq("othersStream")
+    })
+
     //开窗
-    val alertStream = messageStream
-      .keyBy(data => data.name)
+    val alertStream = splitStream
+      .select("targetStream")
+      .keyBy(data => data.machineNumber)
       .timeWindow(Time.seconds(windowTime))  //定义一个30秒的翻滚窗口
       .trigger(new MyTrigger(thresholdValue))  //检测阈值为5
       .reduce((_, y) => Message(y.time, y.machineNumber, y.machineType, y.name, y.value)) //直接聚合
 
 
     val stringName = name match {
-      case "volt" => "动力机械臂电压"
-      case "curr" => "动力机械臂电流"
-      case "temp" => "轴承电动机温度"
-      case "ampl" => "AGV运载车振动幅度"
-      case "freq" => "AGV运载车振动频率"
+      case "volt" => "电压"
+      case "curr" => "电流"
+      case "temp" => "温度"
+      case "ampl" => "振动幅度"
+      case "freq" => "振动频率"
     }
     //变成JsonString流
     val jsonStrStream = alertStream
-      .map(data => ResultJson(data.machineNumber, data.machineType, data.name,"警告！"+stringName+"值跳变过大，超过阈值！", data.time)) //修改格式
-      .map(data => Serialization.write(data)) //包装json
+      .map(data => ResultJson(data.machineNumber, data.machineType, data.name,"警告！"+machineType+data.machineNumber+stringName+"值跳变过大，超过阈值！", data.time)) //修改格式
+      .map(data => Serialization.write(data) ) //包装json
 
     jsonStrStream.addSink(sink)
     jsonStrStream.print()
