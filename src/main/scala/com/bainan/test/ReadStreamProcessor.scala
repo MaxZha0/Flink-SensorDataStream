@@ -29,7 +29,7 @@ object ReadStreamProcessor {
     //接受topic
     val targetTopic = "plcStatusTopic"
     //检测阈值
-    val thresholdValue = 5.96
+    val thresholdValue = 5
     //窗口时间
     val windowTime = 30
     val properties = new Properties()
@@ -37,25 +37,69 @@ object ReadStreamProcessor {
     properties.setProperty("group.id", consumerGroup)
     //sink
     val sink = new FlinkKafkaProducer011[String](kafkaBrokers, targetTopic, new SimpleStringSchema())
+    env.setParallelism(3)
     //source数据流
     val voltDataStream = env.addSource(new FlinkKafkaConsumer011[String](voltListenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
     val currDataStream = env.addSource(new FlinkKafkaConsumer011[String](currListenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
     val tempDataStream = env.addSource(new FlinkKafkaConsumer011[String](tempListenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
     val amplDataStream = env.addSource(new FlinkKafkaConsumer011[String](amplListenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
     val freqDataStream = env.addSource(new FlinkKafkaConsumer011[String](frepListenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
 
+    //分流，进行判断后分流
+    val voltSplitStream = voltDataStream.split( data =>{
+      data.machineType match {
+        case "动力机械臂" => Seq("d-Volt-Stream")
+        case "轴承电动机" => Seq("z-Volt-Stream")
+        case "AGV运载车" => Seq("a-Volt-Stream")
+      }
+    })
+    val currSplitStream = currDataStream.split( data =>{
+      data.machineType match {
+        case "动力机械臂" => Seq("d-Curr-Stream")
+        case "轴承电动机" => Seq("z-Curr-Stream")
+        case "AGV运载车" => Seq("a-Curr-Stream")
+      }
+    })
+    val tempSplitStream = tempDataStream.split( data =>{
+      data.machineType match {
+        case "轴承电动机" => Seq("z-Temp-Stream")
+      }
+    })
+    val amplSplitStream = amplDataStream.split( data =>{
+      data.machineType match {
+        case "轴承电动机" => Seq("z-Ampl-Stream")
+        case "AGV运载车" => Seq("a-Ampl-Stream")
+      }
+    })
+    val freqSplitStream = freqDataStream.split( data =>{
+      data.machineType match {
+        case "轴承电动机" => Seq("z-Freq-Stream")
+        case "AGV运载车" => Seq("a-Freq-Stream")
+      }
+    })
 
-    dataStreamProcessor("volt", "动力机械臂", voltDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("curr", "动力机械臂", currDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("volt", "轴承电动机", voltDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("curr", "轴承电动机", currDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("temp", "轴承电动机", tempDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("ampl", "轴承电动机", amplDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("freq", "轴承电动机", freqDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("volt", "AGV运载车", voltDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("curr", "AGV运载车", currDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("ampl", "AGV运载车", amplDataStream, thresholdValue, sink, windowTime)
-    dataStreamProcessor("freq", "AGV运载车", freqDataStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("d-Volt-Stream", voltSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("z-Volt-Stream", voltSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("a-Volt-Stream", voltSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("d-Curr-Stream", currSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("z-Curr-Stream", currSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("a-Curr-Stream", currSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("z-Temp-Stream", tempSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("z-Ampl-Stream", amplSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("a-Ampl-Stream", amplSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("z-Freq-Stream", freqSplitStream, thresholdValue, sink, windowTime)
+    dataStreamProcessor("a-Freq-Stream", freqSplitStream, thresholdValue, sink, windowTime)
+
 
     env.execute(processName)
   }
@@ -70,49 +114,23 @@ object ReadStreamProcessor {
    * @author Max
    */
   def dataStreamProcessor(name : String,
-//                          machineNumber : String,
-                          machineType : String,
-                          dataStream: DataStream[String],
+                          dataStream: SplitStream[Message],
                           thresholdValue : Double,
                           sink : FlinkKafkaProducer011[String],
                           windowTime : Int) : Unit= {
-
-    //分割stream 转换成 Message 格式Stream
-    val messageStream = dataStream.map(data =>{
-      val dataArray = data.split("\t")
-      Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)
-    })
-
-    //分流，进行判断后分流
-    val splitStream = messageStream.split( data =>{
-      if(data.machineType == machineType  )
-        Seq("targetStream")
-      else
-        Seq("othersStream")
-    })
-
     //开窗
-    val alertStream = splitStream
-      .select("targetStream")
+    val alertStream = dataStream
+      .select(name)
       .keyBy(data => data.machineNumber)
       .timeWindow(Time.seconds(windowTime))  //定义一个30秒的翻滚窗口
       .trigger(new MyTrigger(thresholdValue))  //检测阈值为5
-      .reduce((_, y) => Message(y.time, y.machineNumber, y.machineType, y.name, y.value)) //直接聚合
+      .process(new MyProcessor(name))
 
-
-    val stringName = name match {
-      case "volt" => "电压"
-      case "curr" => "电流"
-      case "temp" => "温度"
-      case "ampl" => "振动幅度"
-      case "freq" => "振动频率"
-    }
     //变成JsonString流
     val jsonStrStream = alertStream
-      .map(data => ResultJson(data.machineNumber, data.machineType, data.name,"警告！"+machineType+data.machineNumber+stringName+"值跳变过大，超过阈值！", data.time)) //修改格式
       .map(data => Serialization.write(data) ) //包装json
 
-    jsonStrStream.addSink(sink)
+    jsonStrStream.addSink(sink).setParallelism(1)
     jsonStrStream.print()
 
   }
