@@ -29,7 +29,7 @@ object ReadStreamProcessor {
     //接受topic
     val targetTopic = "plcStatusTopic"
     //检测阈值
-    val thresholdValue = 5
+    val thresholdValue = 5.97
     //窗口时间
     val windowTime = 30
     val properties = new Properties()
