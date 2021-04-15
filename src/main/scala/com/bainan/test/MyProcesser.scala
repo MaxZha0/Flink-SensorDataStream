@@ -3,10 +3,7 @@ package com.bainan.test
 import org.apache.flink.streaming.api.scala.function.ProcessWindowFunction
 import org.apache.flink.streaming.api.windowing.windows.TimeWindow
 import org.apache.flink.util.Collector
-
 import java.util
-import scala.collection.mutable
-import scala.collection.mutable.Map
 
 /**
  *

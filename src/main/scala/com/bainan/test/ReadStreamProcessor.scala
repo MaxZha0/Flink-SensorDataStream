@@ -1,12 +1,14 @@
 package com.bainan.test
 
 import org.apache.flink.api.common.serialization.SimpleStringSchema
+import org.apache.flink.streaming.api.TimeCharacteristic
 import org.apache.flink.streaming.api.scala.{StreamExecutionEnvironment, _}
 import org.apache.flink.streaming.api.windowing.time.Time
 import org.apache.flink.streaming.connectors.kafka.{FlinkKafkaConsumer011, FlinkKafkaProducer011}
 import org.json4s.NoTypeHints
 import org.json4s.jackson.Serialization
 
+import java.text.SimpleDateFormat
 import java.util.Properties
 
 /**
@@ -25,7 +27,7 @@ object ReadStreamProcessor {
     val currListenerTopic = "CurrDataTopic"
     val tempListenerTopic = "TempDataTopic"
     val amplListenerTopic = "AmplDataTopic"
-    val frepListenerTopic = "FreqDataTopic"
+    val freqListenerTopic = "FreqDataTopic"
     //接受topic
     val targetTopic = "plcStatusTopic"
     //检测阈值
@@ -38,22 +40,15 @@ object ReadStreamProcessor {
     //sink
     val sink = new FlinkKafkaProducer011[String](kafkaBrokers, targetTopic, new SimpleStringSchema())
     env.setParallelism(3)
+    //指定时间语义
+    env.setStreamTimeCharacteristic( TimeCharacteristic.EventTime )
     //source数据流
-    val voltDataStream = env.addSource(new FlinkKafkaConsumer011[String](voltListenerTopic, new SimpleStringSchema(), properties))
-      .map(data =>{val dataArray = data.split("\t")
-        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
-    val currDataStream = env.addSource(new FlinkKafkaConsumer011[String](currListenerTopic, new SimpleStringSchema(), properties))
-      .map(data =>{val dataArray = data.split("\t")
-        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
-    val tempDataStream = env.addSource(new FlinkKafkaConsumer011[String](tempListenerTopic, new SimpleStringSchema(), properties))
-      .map(data =>{val dataArray = data.split("\t")
-        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
-    val amplDataStream = env.addSource(new FlinkKafkaConsumer011[String](amplListenerTopic, new SimpleStringSchema(), properties))
-      .map(data =>{val dataArray = data.split("\t")
-        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
-    val freqDataStream = env.addSource(new FlinkKafkaConsumer011[String](frepListenerTopic, new SimpleStringSchema(), properties))
-      .map(data =>{val dataArray = data.split("\t")
-        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble)})
+    val voltDataStream = dataStreamFormat(voltListenerTopic,properties, env)
+    val currDataStream = dataStreamFormat(currListenerTopic,properties, env)
+    val tempDataStream = dataStreamFormat(tempListenerTopic,properties, env)
+    val amplDataStream = dataStreamFormat(amplListenerTopic,properties, env)
+    val freqDataStream = dataStreamFormat(freqListenerTopic,properties, env)
+
 
     //分流，进行判断后分流
     val voltSplitStream = voltDataStream.split( data =>{
@@ -102,6 +97,29 @@ object ReadStreamProcessor {
 
 
     env.execute(processName)
+
+}
+
+  /**
+   * 数据流格式化
+   *
+   * @param listenerTopic
+   * @param properties
+   * @param env
+   * @return
+   */
+  def dataStreamFormat(listenerTopic : String,
+                       properties : Properties,
+                       env :  StreamExecutionEnvironment): DataStream[Message] ={
+    val dataStream = env.addSource(new FlinkKafkaConsumer011[String](listenerTopic, new SimpleStringSchema(), properties))
+      .map(data =>{val dataArray = data.split("\t")
+        //转换时间
+        val dataFormat = new SimpleDateFormat( "yyyy-MM-dd HH:mm:ss" )
+        //直接转换为时间戳
+        val timestamp = dataFormat.parse(dataArray(0)).getTime
+        Message(dataArray(0), dataArray(1), dataArray(2), dataArray(3), dataArray(4).toDouble, timestamp)})
+      .assignAscendingTimestamps(_.timestamp)
+    dataStream
   }
 
   /**
