@@ -21,7 +21,7 @@ object ReadStreamProcessor {
   def main(args: Array[String]): Unit = {
     val processName = "kafka_read_stream_processor"
     val env = StreamExecutionEnvironment.getExecutionEnvironment
-    val kafkaBrokers = "222.25.172.64:9092,n001:9092,n002:9092,n003:9092"
+    val kafkaBrokers = "n000:9092,n001:9092,n002:9092,n003:9092"
     val consumerGroup = "readData"
     val voltListenerTopic = "VoltDataTopic"
     val currListenerTopic = "CurrDataTopic"
